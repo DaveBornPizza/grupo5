@@ -1,5 +1,8 @@
 # Lottery Scheduling com `settickets(int)` no xv6
 
+## Vídeo da apresentação
+📹 Disponível em: https://www.youtube.com/watch?v=jG1Lr0_pmUI 
+
 **Disciplina:** GBC045 — Sistemas Operacionais
 **Curso:** Bacharelado em Ciência da Computação — FACOM/UFU
 **Tema 5:** chamada de sistema `settickets(int)` e algoritmo de escalonamento *Lottery Scheduling* (compartilhamento proporcional)
