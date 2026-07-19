@@ -29,12 +29,12 @@ $ testeloteria 200        # janela de 200 ticks (mais rápido)
 Saída de exemplo (real, `testeloteria 200`):
 
 ```console
-bilhetes=30 pid=6 iteracoes=490550
-bilhetes=20 pid=5 iteracoes=333036
-bilhetes=10 pid=4 iteracoes=198311
+bilhetes=30 pid=8 iteracoes=504204
+bilhetes=20 pid=7 iteracoes=344040
+bilhetes=10 pid=6 iteracoes=130053
 ```
 
-Proporção observada ≈ 48% / 33% / 19%, próxima do ideal 50% / 33% / 17%.
+Proporção observada ≈ 51% / 35% / 13%, próxima do ideal 50% / 33% / 17%.
 
 ## `testerobustez.c` — revisão de qualidade (integração)
 
@@ -43,6 +43,7 @@ Teste adicionado na etapa de integração para exercitar os **casos de borda**
 
 - `settickets(0)` → deve ser **rejeitado** (retorno `-1`);
 - `settickets(-5)` → deve ser **rejeitado**;
+- `settickets(MAX_TICKETS + 1)` → deve ser **rejeitado** (limite superior);
 - `settickets(10)` → deve ser **aceito** (retorno `0`);
 - um processo cujo pedido de 0 bilhetes foi rejeitado **continua executando**
   (mantém os bilhetes herdados) — comprovando que **não há starvation**.
@@ -57,9 +58,10 @@ Saída de exemplo (real):
 
 ```console
 == Teste de robustez do settickets ==
-settickets(0)   -> -1  REJEITADO (ok)
-settickets(-5)  -> -1  REJEITADO (ok)
-settickets(10)  -> 0  ACEITO (ok)
+settickets(0)        -> -1  REJEITADO (ok)
+settickets(-5)       -> -1  REJEITADO (ok)
+settickets(MAX+1)    -> -1  REJEITADO (ok)
+settickets(10)       -> 0  ACEITO (ok)
 filho pid=4 executou apos settickets(0) -> sem starvation
 == fim ==
 ```

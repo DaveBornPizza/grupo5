@@ -71,19 +71,19 @@ além do registro da nova syscall:
 
 Implementação da solução sobre o **xv6-riscv**: escalonador *Round Robin* substituído por
 *Lottery Scheduling*, syscall `settickets(int)` e programa de teste `testeloteria`. O
-escalonador e o teste foram implementados pelos colegas; na **integração** foram corrigidos os
-pontos que impediam o código de compilar/funcionar (o campo `tickets` não estava declarado, a
-constante `DEFAULT_TICKETS` não existia e a syscall `settickets` não estava registrada).
+escalonador, a syscall e o teste foram implementados pelos colegas (versão corrigida, que já
+compila sozinha e valida bilhetes entre `1` e `MAX_TICKETS`). A **integração** fez a limpeza de
+qualidade, o teste de casos de borda e a documentação.
 
 | Arquivo | Alteração | Origem |
 |---------|-----------|--------|
 | `kernel/proc.c` | PRNG `randtolottery()`, escalonador por sorteio, herança de bilhetes no `fork`. | colegas |
+| `kernel/proc.h` | Campo `int tickets` em `struct proc`. | colegas |
+| `kernel/param.h` | `DEFAULT_TICKETS 10` e `MAX_TICKETS 100000`. | colegas |
+| `kernel/sysproc.c` | Handler `sys_settickets` (valida `1 ≤ n ≤ MAX_TICKETS`). | colegas |
+| `kernel/syscall.h`, `kernel/syscall.c`, `user/user.h`, `user/usys.pl` | Registro/interface da syscall `settickets` (nº 22). | colegas |
 | `user/testeloteria.c` | Teste de proporcionalidade (10/20/30 bilhetes). | colegas |
-| `kernel/proc.h` | Declaração do campo `int tickets` em `struct proc`. | integração |
-| `kernel/param.h` | `#define DEFAULT_TICKETS 1`. | integração |
-| `kernel/proc.c` | Função `settickets()` + remoção de comentário indevido. | integração |
-| `kernel/defs.h`, `kernel/syscall.h`, `kernel/syscall.c`, `kernel/sysproc.c` | Registro da syscall `settickets` (nº 22). | integração |
-| `user/user.h`, `user/usys.pl` | Interface da syscall para userspace. | integração |
+| `kernel/proc.c` | Remoção de comentário indevido. | integração |
 | `user/testerobustez.c`, `Makefile` | Teste de robustez dos casos de borda. | integração |
 
 O detalhamento completo, a metodologia e os resultados estão em
@@ -172,20 +172,20 @@ $
 ```console
 $ testeloteria            # proporcionalidade: 3 filhos com 10, 20 e 30 bilhetes (600 ticks)
 $ testeloteria 200        # mesma coisa, janela menor (mais rápido)
-$ testerobustez           # casos de borda: settickets(0) e negativos rejeitados
+$ testerobustez           # casos de borda: settickets(0), negativos e acima de MAX_TICKETS
 ```
 
 Saída de exemplo (real, `testeloteria 200`):
 
 ```console
 $ testeloteria 200
-bilhetes=30 pid=6 iteracoes=490550
-bilhetes=20 pid=5 iteracoes=333036
-bilhetes=10 pid=4 iteracoes=198311
+bilhetes=30 pid=8 iteracoes=504204
+bilhetes=20 pid=7 iteracoes=344040
+bilhetes=10 pid=6 iteracoes=130053
 ```
 
 O número de **iterações** de cada processo fica na razão dos seus bilhetes
-(≈ 48% / 33% / 19% para 30 / 20 / 10 bilhetes; ideal 50% / 33% / 17%), comprovando o
+(≈ 51% / 35% / 13% para 30 / 20 / 10 bilhetes; ideal 50% / 33% / 17%), comprovando o
 compartilhamento proporcional. Cada execução leva a janela de ticks configurada
 (alguns segundos); aguarde as três linhas de resultado.
 
@@ -205,7 +205,9 @@ ALL TESTS PASSED
 
 - **`settickets(0)` ou valores negativos** → a syscall retorna `-1` e o processo mantém os
   bilhetes que já tinha; não é possível zerar os próprios bilhetes.
-- **Processo com o mínimo de bilhetes (1)** → continua recebendo uma fatia pequena, porém
+- **`settickets(n > MAX_TICKETS)`** → também retorna `-1` (limite de 100000 bilhetes),
+  evitando abuso/estouro na soma de bilhetes.
+- **Processo com poucos bilhetes** → continua recebendo uma fatia pequena, porém
   não nula, da CPU: **não há inanição (*starvation*)**.
 - **Nenhum processo pronto** → o total de bilhetes é 0, nenhum sorteio ocorre, sem divisão
   por zero.

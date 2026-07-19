@@ -519,23 +519,6 @@ yield(void)
   release(&p->lock);
 }
 
-// Lottery Scheduling: define o numero de bilhetes do processo chamador.
-// Retorna 0 em sucesso, ou -1 se n nao for positivo (rejeitar 0 e negativos
-// evita que um processo se exclua permanentemente do sorteio -- starvation).
-int
-settickets(int n)
-{
-  struct proc *p = myproc();
-
-  if (n < 1)
-    return -1;
-
-  acquire(&p->lock);
-  p->tickets = n;
-  release(&p->lock);
-  return 0;
-}
-
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.
 void

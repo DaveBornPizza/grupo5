@@ -108,13 +108,21 @@ sys_uptime(void)
   return xticks;
 }
 
-// Lottery Scheduling: define o numero de bilhetes do processo chamador.
-// Retorna 0 em sucesso e -1 se o valor for invalido (nao positivo).
 uint64
-sys_settickets(void)
+sys_settickets(void) 
 {
   int n;
-
   argint(0, &n);
-  return settickets(n);
+
+  if (n < 1 || n > MAX_TICKETS) {
+    return -1;
+  }
+
+  struct proc *p = myproc();
+  acquire(&p->lock);
+  p->tickets = n;
+  release(&p->lock);    
+
+  return 0;
+
 }
