@@ -67,26 +67,148 @@ além do registro da nova syscall:
 3. **`fork()`** : fazer o processo filho herdar o número de bilhetes do pai, preservando a
    proporcionalidade configurada.
 
-### Etapa 2 — Implementação prática *(a entregar)*
+### Etapa 2 — Implementação prática *(esta entrega)*
 
-Implementação da solução no xv6, incluindo a criação/registro da syscall, as alterações no
-kernel, um programa de usuário para teste e a **análise comparativa experimental com o Round
-Robin** original do xv6 (métricas, tabelas e gráficos). Arquivos previstos para modificação:
-`proc.c` (escalonador), `syscall.c` (syscall) e `user.h` (interface).
+Implementação da solução sobre o **xv6-riscv**: escalonador *Round Robin* substituído por
+*Lottery Scheduling*, syscall `settickets(int)` e programa de teste `testeloteria`. O
+escalonador e o teste foram implementados pelos colegas; na **integração** foram corrigidos os
+pontos que impediam o código de compilar/funcionar (o campo `tickets` não estava declarado, a
+constante `DEFAULT_TICKETS` não existia e a syscall `settickets` não estava registrada).
+
+| Arquivo | Alteração | Origem |
+|---------|-----------|--------|
+| `kernel/proc.c` | PRNG `randtolottery()`, escalonador por sorteio, herança de bilhetes no `fork`. | colegas |
+| `user/testeloteria.c` | Teste de proporcionalidade (10/20/30 bilhetes). | colegas |
+| `kernel/proc.h` | Declaração do campo `int tickets` em `struct proc`. | integração |
+| `kernel/param.h` | `#define DEFAULT_TICKETS 1`. | integração |
+| `kernel/proc.c` | Função `settickets()` + remoção de comentário indevido. | integração |
+| `kernel/defs.h`, `kernel/syscall.h`, `kernel/syscall.c`, `kernel/sysproc.c` | Registro da syscall `settickets` (nº 22). | integração |
+| `user/user.h`, `user/usys.pl` | Interface da syscall para userspace. | integração |
+| `user/testerobustez.c`, `Makefile` | Teste de robustez dos casos de borda. | integração |
+
+O detalhamento completo, a metodologia e os resultados estão em
+[`report/RELATORIO.md`](report/RELATORIO.md).
 
 ---
 
 ## Estrutura do repositório
 
 ```
-grupoX/
-├── README.md     # este arquivo
-├── slides/       # slides da apresentação (Etapa 1)
-├── video/        # vídeo da apresentação (Etapa 1)
-├── code/         # código modificado do xv6 (Etapa 2)
-├── tests/        # programa(s) de teste (Etapa 2)
-└── report/       # relatório técnico (Etapa 2)
+grupo5/
+├── README.md            # este arquivo (roteiro de execução)
+├── slides/              # slides da apresentação (Etapa 1)
+├── video/               # link do vídeo da apresentação (Etapa 1)
+├── code/                # xv6-riscv com o Lottery Scheduling (Etapa 2)
+├── tests/               # testeloteria.c e testerobustez.c (Etapa 2)
+└── report/              # relatório técnico (Etapa 2)
 ```
+
+---
+
+## Pré-requisitos
+
+Para compilar e rodar o xv6 são necessários o **compilador cruzado RISC-V** e o **QEMU**.
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git build-essential gcc-riscv64-unknown-elf \
+                        binutils-riscv64-unknown-elf qemu-system-misc
+```
+
+**macOS (Homebrew):**
+
+```bash
+brew tap riscv-software-src/riscv
+brew install riscv-gnu-toolchain qemu
+# dependências do gcc (caso o compilador reclame de bibliotecas ausentes):
+brew install gmp mpfr libmpc isl
+```
+
+Verifique a instalação:
+
+```bash
+qemu-system-riscv64 --version
+riscv64-unknown-elf-gcc --version
+```
+
+---
+
+## Como compilar e executar (passo a passo)
+
+Todos os comandos abaixo são executados a partir da pasta **`code/`**.
+
+```bash
+cd code
+```
+
+**1. (Opcional) Limpar artefatos de compilações anteriores:**
+
+```bash
+make clean
+```
+
+**2. Compilar o xv6 e iniciar o QEMU com UMA CPU:**
+
+```bash
+make qemu CPUS=1
+```
+
+> ⚠️ **Use `CPUS=1`.** A proporcionalidade do *Lottery Scheduling* só é observável em uma
+> única CPU. Com várias CPUs os processos rodam em paralelo e as contagens deixam de refletir
+> a razão de bilhetes.
+
+Aguarde a mensagem de boot e o prompt do shell do xv6:
+
+```console
+xv6 kernel is booting
+init: starting sh
+$
+```
+
+**3. Rodar os testes** (dentro do shell do xv6):
+
+```console
+$ testeloteria            # proporcionalidade: 3 filhos com 10, 20 e 30 bilhetes (600 ticks)
+$ testeloteria 200        # mesma coisa, janela menor (mais rápido)
+$ testerobustez           # casos de borda: settickets(0) e negativos rejeitados
+```
+
+Saída de exemplo (real, `testeloteria 200`):
+
+```console
+$ testeloteria 200
+bilhetes=30 pid=6 iteracoes=490550
+bilhetes=20 pid=5 iteracoes=333036
+bilhetes=10 pid=4 iteracoes=198311
+```
+
+O número de **iterações** de cada processo fica na razão dos seus bilhetes
+(≈ 48% / 33% / 19% para 30 / 20 / 10 bilhetes; ideal 50% / 33% / 17%), comprovando o
+compartilhamento proporcional. Cada execução leva a janela de ticks configurada
+(alguns segundos); aguarde as três linhas de resultado.
+
+**4. (Opcional) Validar que o kernel continua íntegro:**
+
+```console
+$ usertests -q
+...
+ALL TESTS PASSED
+```
+
+**5. Sair do QEMU:** pressione `Ctrl-A` e, em seguida, `x`.
+
+---
+
+## Casos de borda tratados
+
+- **`settickets(0)` ou valores negativos** → a syscall retorna `-1` e o processo mantém os
+  bilhetes que já tinha; não é possível zerar os próprios bilhetes.
+- **Processo com o mínimo de bilhetes (1)** → continua recebendo uma fatia pequena, porém
+  não nula, da CPU: **não há inanição (*starvation*)**.
+- **Nenhum processo pronto** → o total de bilhetes é 0, nenhum sorteio ocorre, sem divisão
+  por zero.
 
 ---
 
