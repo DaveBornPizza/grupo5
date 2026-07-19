@@ -12,4 +12,5 @@
 #define FSSIZE      2000              // size of file system in blocks
 #define MAXPATH     128               // maximum file path name
 #define USERSTACK   1                 // user stack pages
-#define DEFAULT_TICKETS 1             // Lottery Scheduling: bilhetes iniciais de cada processo
+#define DEFAULT_TICKETS 10            // Lottery Scheduling: bilhetes iniciais de cada processo
+#define MAX_TICKETS     100000        // Lottery Scheduling: limite maximo de bilhetes por processo

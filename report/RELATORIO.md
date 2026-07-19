@@ -35,36 +35,35 @@ sorteios cresce.
 
 ## 2. Implementação
 
-Base: **xv6-riscv** (MIT PDOS, revisão RISC-V). O escalonador e o teste de
-proporcionalidade foram implementados pelos colegas; na etapa de **integração**
-foram corrigidos os pontos que impediam o código de compilar e a syscall de
-funcionar. A tabela distingue as duas contribuições.
+Base: **xv6-riscv** (MIT PDOS, revisão RISC-V). O escalonador, a syscall e o teste
+de proporcionalidade foram implementados pelos colegas (versão corrigida, que já
+compila sozinha). Na etapa de **integração** foram feitas a limpeza de qualidade,
+o teste de casos de borda e a documentação. A tabela distingue as contribuições.
 
 | Arquivo | Alteração | Origem |
 |---------|-----------|--------|
-| [`kernel/proc.c`](../code/kernel/proc.c) | PRNG `randtolottery()`, escalonador por sorteio, herança de bilhetes no `fork`, uso de `tickets`/`DEFAULT_TICKETS`. | colegas |
+| [`kernel/proc.c`](../code/kernel/proc.c) | PRNG `randtolottery()`, escalonador por sorteio, herança de bilhetes no `fork`. | colegas |
+| [`kernel/proc.h`](../code/kernel/proc.h) | Campo `int tickets` em `struct proc`. | colegas |
+| [`kernel/param.h`](../code/kernel/param.h) | `DEFAULT_TICKETS 10` e `MAX_TICKETS 100000`. | colegas |
+| [`kernel/sysproc.c`](../code/kernel/sysproc.c) | Handler `sys_settickets` com validação `n < 1 \|\| n > MAX_TICKETS`. | colegas |
+| [`kernel/syscall.h`](../code/kernel/syscall.h), [`kernel/syscall.c`](../code/kernel/syscall.c) | Registro da syscall `settickets` (nº 22). | colegas |
+| [`user/user.h`](../code/user/user.h), [`user/usys.pl`](../code/user/usys.pl) | Interface da syscall para userspace. | colegas |
 | [`user/testeloteria.c`](../code/user/testeloteria.c) | Teste de proporcionalidade com barreira por *pipes*. | colegas |
-| [`kernel/proc.h`](../code/kernel/proc.h) | Declaração do campo `int tickets` em `struct proc` (faltava). | integração |
-| [`kernel/param.h`](../code/kernel/param.h) | `#define DEFAULT_TICKETS 1` (faltava). | integração |
-| [`kernel/proc.c`](../code/kernel/proc.c) | Função `settickets()` + remoção de comentário indevido. | integração |
-| [`kernel/defs.h`](../code/kernel/defs.h) | Protótipo `int settickets(int)`. | integração |
-| [`kernel/syscall.h`](../code/kernel/syscall.h) | `#define SYS_settickets 22`. | integração |
-| [`kernel/syscall.c`](../code/kernel/syscall.c) | Registro de `sys_settickets` na tabela de syscalls. | integração |
-| [`kernel/sysproc.c`](../code/kernel/sysproc.c) | Handler `sys_settickets`. | integração |
-| [`user/user.h`](../code/user/user.h), [`user/usys.pl`](../code/user/usys.pl) | Interface da syscall para userspace. | integração |
+| [`kernel/proc.c`](../code/kernel/proc.c) | Remoção de comentário indevido deixado no código. | integração |
 | [`user/testerobustez.c`](../code/user/testerobustez.c) + `Makefile` | Teste de robustez dos casos de borda. | integração |
 
-> **Furo encontrado na revisão de qualidade:** o `proc.c` dos colegas já usava
-> `p->tickets` e `DEFAULT_TICKETS` e o teste chamava `settickets()`, mas o campo
-> nunca foi declarado, a constante nunca foi definida e a syscall nunca foi
-> registrada. Como estava, **o kernel não compilava** (`'struct proc' has no
-> member named 'tickets'`) e o teste não linkava. A integração fechou esses furos.
+> **Nota da revisão de qualidade:** a primeira versão enviada pelos colegas *não
+> compilava* — usava `p->tickets` e `DEFAULT_TICKETS` sem declará-los e chamava
+> `settickets()` sem registrar a syscall (`'struct proc' has no member named
+> 'tickets'`). Nesta **versão corrigida** os colegas fecharam esses furos e ainda
+> adicionaram o limite superior `MAX_TICKETS`. Restou, na integração, remover um
+> comentário indevido e acrescentar um teste dedicado aos casos de borda.
 
 ### 2.1 Estrutura do processo e valor padrão
 
-Cada `struct proc` passou a ter um campo `tickets`. Em `allocproc`, todo processo
-nasce com `DEFAULT_TICKETS = 1`. Assim, nenhum processo fica com zero bilhetes
-por omissão (o que o excluiria permanentemente do sorteio).
+Cada `struct proc` tem um campo `tickets`. Em `allocproc`, todo processo nasce com
+`DEFAULT_TICKETS = 10`. Assim, nenhum processo fica com zero bilhetes por omissão
+(o que o excluiria permanentemente do sorteio).
 
 ### 2.2 Herança em `fork`
 
@@ -136,11 +135,19 @@ de travas do xv6. Não há divisão por zero: o sorteio só ocorre quando
 
 ### 2.5 A chamada `settickets(int)`
 
+Implementada diretamente no handler `sys_settickets` (em `sysproc.c`):
+
 ```c
-int settickets(int n) {
-  struct proc *p = myproc();
-  if (n < 1)          // rejeita 0 e valores negativos
+uint64
+sys_settickets(void)
+{
+  int n;
+  argint(0, &n);
+
+  if (n < 1 || n > MAX_TICKETS)
     return -1;
+
+  struct proc *p = myproc();
   acquire(&p->lock);
   p->tickets = n;
   release(&p->lock);
@@ -148,9 +155,9 @@ int settickets(int n) {
 }
 ```
 
-A validação `n < 1` é o principal ponto de robustez: impede que um processo se
-atribua **0 bilhetes** (o que causaria *starvation* permanente) ou um valor
-negativo (que corromperia a soma de bilhetes).
+A validação rejeita **0 e valores negativos** (`n < 1`, que causariam *starvation*
+ou corromperiam a soma) e também valores **acima de `MAX_TICKETS` (100000)**,
+evitando abuso/estouro na soma de bilhetes.
 
 ---
 
@@ -183,11 +190,11 @@ Bilhetes 10, 20 e 30 (total = 60):
 
 | PID | Bilhetes | Iterações | CPU% obtido | CPU% ideal ($t_i/T$) |
 |-----|----------|----------|-------------|----------------------|
-| 6   | 30       | 490550   | **48%**     | 50% |
-| 5   | 20       | 333036   | **33%**     | 33% |
-| 4   | 10       | 198311   | **19%**     | 17% |
+| 8   | 30       | 504204   | **51%**     | 50% |
+| 7   | 20       | 344040   | **35%**     | 33% |
+| 6   | 10       | 130053   | **13%**     | 17% |
 
-Total de iterações = 1.021.897. O CPU obtido acompanha de perto o valor ideal,
+Total de iterações = 978.297. O CPU obtido acompanha de perto o valor ideal,
 com desvio de poucos pontos percentuais — compatível com a natureza estatística
 do sorteio em uma janela finita. Repetindo o teste, o processo com mais bilhetes
 vence consistentemente mais sorteios.
@@ -200,7 +207,7 @@ prioridade ou peso**. Consequentemente, três processos CPU-bound receberiam
 aproximadamente 33% da CPU cada, independentemente de sua importância.
 
 Com o *Lottery Scheduling*, a mesma carga (10/20/30 bilhetes) resulta em
-aproximadamente 19/33/48% — ou seja, o mecanismo passa a **respeitar o peso
+aproximadamente 13/35/51% — ou seja, o mecanismo passa a **respeitar o peso
 relativo** de cada processo. Note ainda que, se todos tivessem o mesmo número de
 bilhetes, o sorteio daria a cada um ~$1/N$ da CPU, degenerando exatamente no
 comportamento igualitário do Round Robin. Essa é a diferença fundamental entre um
@@ -215,6 +222,7 @@ escalonador de tempo igualitário (RR) e um de compartilhamento proporcional
 |------|-------------------------|-----------|
 | `settickets(0)` | Retorna `-1`; o processo **mantém** os bilhetes que já tinha. | Rejeitado com segurança; sem *starvation*. |
 | `settickets(-5)` | Mesma validação `n < 1` ⇒ retorna `-1`. | Valores negativos nunca entram na soma de bilhetes. |
+| `settickets(MAX_TICKETS+1)` | Validação `n > MAX_TICKETS` ⇒ retorna `-1`. | Impede abuso/estouro na soma de bilhetes. |
 | Processo após `settickets(0)` rejeitado | Continua executável (mantém ≥ 1 bilhete). | **Não há inanição:** todo processo `RUNNABLE` tem probabilidade > 0. |
 | Nenhum processo `RUNNABLE` | `total_tickets == 0` ⇒ `continue` (sem sorteio). | Sem divisão por zero. |
 
@@ -222,17 +230,18 @@ Evidência (`testerobustez`):
 
 ```console
 == Teste de robustez do settickets ==
-settickets(0)   -> -1  REJEITADO (ok)
-settickets(-5)  -> -1  REJEITADO (ok)
-settickets(10)  -> 0  ACEITO (ok)
+settickets(0)        -> -1  REJEITADO (ok)
+settickets(-5)       -> -1  REJEITADO (ok)
+settickets(MAX+1)    -> -1  REJEITADO (ok)
+settickets(10)       -> 0  ACEITO (ok)
 filho pid=4 executou apos settickets(0) -> sem starvation
 == fim ==
 ```
 
-A validação `n < 1` em `settickets` (adicionada na integração) é o principal ponto
-de robustez: impede que um processo se atribua **0 bilhetes** (o que causaria
-*starvation* permanente) ou um valor negativo (que corromperia a soma de
-bilhetes).
+A validação `n < 1 || n > MAX_TICKETS` em `sys_settickets` é o principal ponto de
+robustez: impede que um processo se atribua **0 bilhetes** (o que causaria
+*starvation* permanente), um valor **negativo** (que corromperia a soma) ou um
+valor **excessivo** (acima de `MAX_TICKETS = 100000`).
 
 ### 5.1 Regressão do kernel
 
